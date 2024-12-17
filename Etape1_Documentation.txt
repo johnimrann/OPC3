@@ -1,0 +1,45 @@
+# Documentation de l'Étape 1 - Mise en place de l'environnement de travail
+
+## Objectifs
+- Mettre en place l'environnement de développement Salesforce
+- Récupérer et comprendre le code existant
+- Préparer l'environnement pour les modifications à venir
+
+## Prérequis
+1. Installation de Visual Studio Code
+2. Installation des extensions Salesforce pour VS Code :
+   - Salesforce Extension Pack
+   - Salesforce CLI Integration
+   - Apex
+
+## Configuration de l'environnement
+1. Cloner le repository du projet
+2. Ouvrir le projet dans VS Code
+3. Authentification à votre org Salesforce via SFDX
+4. Vérification de la structure du projet
+
+## Structure du projet
+Le projet contient les éléments suivants :
+- `/force-app/main/default/` : Dossier principal contenant le code source
+  - `/classes/` : Classes Apex
+  - `/lwc/` : Composants Lightning Web
+  - `/triggers/` : Triggers Apex
+  - `/objects/` : Définitions des objets personnalisés
+  - `/layouts/` : Mises en page
+  - `/permissionsets/` : Ensembles d'autorisations
+
+## Vérification initiale
+1. Vérifier que tous les fichiers sont bien présents
+2. Vérifier que la structure du projet est correcte
+3. Tester la connexion avec l'org Salesforce
+4. Faire un premier déploiement de test
+
+## Points d'attention
+- S'assurer que tous les composants nécessaires sont présents
+- Vérifier les dépendances entre les différents composants
+- Noter les éventuels problèmes ou manques pour les corriger dans les étapes suivantes
+
+## Prochaines étapes
+1. Analyser le code existant en détail
+2. Identifier les zones à modifier
+3. Planifier les modifications à apporter

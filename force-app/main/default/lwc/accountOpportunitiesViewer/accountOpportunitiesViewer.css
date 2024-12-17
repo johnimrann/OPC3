@@ -1,3 +1,44 @@
 /**
  * Created by William on 13/03/2024.
  */
+
+.opportunities-count {
+    font-weight: 600;
+    color: #2e844a;
+    padding: 0.5rem 0;
+}
+
+.error-message {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid #c23934;
+    border-radius: 0.25rem;
+    background-color: #fafaf9;
+}
+
+.error-message lightning-icon {
+    --sds-c-icon-color-foreground-default: #c23934;
+}
+
+.error-message span {
+    color: #c23934;
+    font-weight: 500;
+}
+
+.slds-datatable_bordered {
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+}
+
+.slds-datatable th {
+    font-weight: 600;
+    background-color: #f3f3f3;
+}
+
+.slds-datatable td {
+    padding: 0.5rem 0.75rem;
+}
+
+.slds-datatable tr:hover td {
+    background-color: #f8f8f8;
+}

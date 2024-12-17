@@ -1,24 +1,57 @@
 <template>
     <lightning-card title="Recherche de Cas par Sujet" icon-name="standard:case">
-        <div class="slds-p-around_medium">
-            <lightning-input label="Rechercher par Sujet"
-                             value={searchTerm}
-                             onchange={updateSearchTerm}>
-            </lightning-input>
-            <lightning-button label="Rechercher"
-                              variant="brand"
-                              onclick={handleSearch}
-                              class="slds-m-top_small">
-            </lightning-button>
+        <div class="search-container">
+            <div class="slds-grid slds-gutters">
+                <div class="slds-col slds-size_3-of-4">
+                    <lightning-input 
+                        label="Rechercher par Sujet"
+                        value={searchTerm}
+                        onchange={updateSearchTerm}
+                        placeholder="Entrez un sujet à rechercher..."
+                    ></lightning-input>
+                </div>
+                <div class="slds-col slds-size_1-of-4 slds-align-bottom">
+                    <lightning-button 
+                        label="Rechercher"
+                        variant="brand"
+                        onclick={handleSearch}
+                        class="search-button"
+                    ></lightning-button>
+                </div>
+            </div>
         </div>
-        <template if:true={cases}>
-            <lightning-datatable data={cases}
-                                 columns={columns}
-                                 key-field="Id">
-            </lightning-datatable>
-        </template>
-        <template if:true={error}>
-            <p class="slds-p-around_medium slds-text-color_error">{error}</p>
-        </template>
+        
+        <div class="slds-p-around_medium">
+            <template if:true={isLoading}>
+                <lightning-spinner alternative-text="Chargement"></lightning-spinner>
+            </template>
+            
+            <template if:true={cases}>
+                <div class="slds-p-vertical_small">
+                    <p class="result-count slds-text-body_small">
+                        {resultCount} résultats trouvés
+                    </p>
+                </div>
+                <lightning-datatable
+                    data={cases}
+                    columns={columns}
+                    key-field="Id"
+                    hide-checkbox-column
+                    show-row-number-column
+                ></lightning-datatable>
+            </template>
+            
+            <template if:true={error}>
+                <div class="error-message">
+                    <lightning-icon
+                        icon-name="utility:error"
+                        alternative-text="Erreur"
+                        size="small"
+                        class="slds-m-right_small"
+                    ></lightning-icon>
+                    <span>{error}</span>
+                </div>
+            </template>
+        </div>
     </lightning-card>
 </template>

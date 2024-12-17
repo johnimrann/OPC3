@@ -1,0 +1,232 @@
+# Plan d'amélioration détaillé - Étape 3
+
+## 1. Améliorations de l'interface utilisateur
+
+### A. Composant accountCasesSearcher
+
+#### État actuel :
+- Interface basique avec un champ de recherche et un bouton
+- Tableau de données simple
+- Gestion d'erreur minimale
+
+#### Améliorations à apporter :
+
+1. Style et mise en page
+   ```css
+   /* Ajouter dans accountCasesSearcher.css */
+   .search-container {
+       padding: 1rem;
+       background-color: #f3f3f3;
+       border-radius: 0.25rem;
+   }
+   
+   .search-button {
+       margin-left: 1rem;
+   }
+   
+   .error-message {
+       padding: 0.5rem;
+       background-color: #ffdede;
+       border: 1px solid #c23934;
+       border-radius: 0.25rem;
+   }
+   ```
+
+2. Structure HTML améliorée
+   ```html
+   <template>
+       <lightning-card title="Recherche de Cas par Sujet" icon-name="standard:case">
+           <div class="search-container">
+               <div class="slds-grid slds-gutters">
+                   <div class="slds-col slds-size_3-of-4">
+                       <lightning-input 
+                           label="Rechercher par Sujet"
+                           value={searchTerm}
+                           onchange={updateSearchTerm}
+                           placeholder="Entrez un sujet à rechercher..."
+                       ></lightning-input>
+                   </div>
+                   <div class="slds-col slds-size_1-of-4 slds-align-bottom">
+                       <lightning-button 
+                           label="Rechercher"
+                           variant="brand"
+                           onclick={handleSearch}
+                           class="search-button"
+                       ></lightning-button>
+                   </div>
+               </div>
+           </div>
+           
+           <div class="slds-p-around_medium">
+               <template if:true={isLoading}>
+                   <lightning-spinner alternative-text="Chargement"></lightning-spinner>
+               </template>
+               
+               <template if:true={cases}>
+                   <div class="slds-p-vertical_small">
+                       <p class="slds-text-body_small">
+                           {resultCount} résultats trouvés
+                       </p>
+                   </div>
+                   <lightning-datatable
+                       data={cases}
+                       columns={columns}
+                       key-field="Id"
+                       hide-checkbox-column
+                       show-row-number-column
+                   ></lightning-datatable>
+               </template>
+               
+               <template if:true={error}>
+                   <div class="error-message">
+                       <lightning-icon
+                           icon-name="utility:error"
+                           alternative-text="Erreur"
+                           size="small"
+                           class="slds-m-right_small"
+                       ></lightning-icon>
+                       <span>{error}</span>
+                   </div>
+               </template>
+           </div>
+       </lightning-card>
+   </template>
+   ```
+
+3. Améliorations JavaScript
+   ```javascript
+   import { LightningElement, track, api } from 'lwc';
+   import findCasesBySubject from '@salesforce/apex/AccountCasesController.findCasesBySubject';
+
+   const COLUMNS = [
+       { 
+           label: 'Sujet',
+           fieldName: 'Subject',
+           type: 'text',
+           sortable: true,
+           wrapText: true
+       },
+       { 
+           label: 'Statut',
+           fieldName: 'Status',
+           type: 'text',
+           sortable: true
+       },
+       { 
+           label: 'Priorité',
+           fieldName: 'Priority',
+           type: 'text',
+           sortable: true
+       },
+       {
+           label: 'Date de création',
+           fieldName: 'CreatedDate',
+           type: 'date',
+           sortable: true,
+           typeAttributes: {
+               year: 'numeric',
+               month: 'long',
+               day: '2-digit'
+           }
+       }
+   ];
+
+   export default class AccountCaseSearchComponent extends LightningElement {
+       @api recordId;
+       @track cases;
+       @track error;
+       @track isLoading = false;
+       searchTerm = '';
+       columns = COLUMNS;
+
+       get resultCount() {
+           return this.cases ? this.cases.length : 0;
+       }
+
+       updateSearchTerm(event) {
+           this.searchTerm = event.target.value;
+           if (this.searchTerm === '') {
+               this.cases = undefined;
+               this.error = undefined;
+           }
+       }
+
+       handleSearch() {
+           if (!this.searchTerm) {
+               this.error = 'Veuillez entrer un terme de recherche';
+               return;
+           }
+
+           this.isLoading = true;
+           this.cases = undefined;
+           this.error = undefined;
+
+           findCasesBySubject({ 
+               accountId: this.recordId,
+               subjectSearchTerm: this.searchTerm 
+           })
+               .then(result => {
+                   this.cases = this.formatCases(result);
+                   if (this.cases.length === 0) {
+                       this.error = 'Aucun cas trouvé pour ce terme de recherche';
+                   }
+               })
+               .catch(error => {
+                   this.error = 'Une erreur est survenue lors de la recherche des cas : ' + 
+                               (error.body?.message || error.message || 'Erreur inconnue');
+               })
+               .finally(() => {
+                   this.isLoading = false;
+               });
+       }
+
+       formatCases(cases) {
+           return cases.map(caseItem => ({
+               ...caseItem,
+               CreatedDate: new Date(caseItem.CreatedDate)
+           }));
+       }
+   }
+   ```
+
+## 2. Tests et validation
+
+1. Tests à effectuer :
+   - Vérifier la réactivité sur différentes tailles d'écran
+   - Tester avec différents volumes de données
+   - Vérifier le comportement en cas d'erreur
+   - Tester les performances de recherche
+
+2. Critères de validation :
+   - Interface utilisateur intuitive et professionnelle
+   - Temps de réponse rapide
+   - Messages d'erreur clairs et utiles
+   - Affichage correct des données
+   - Expérience utilisateur fluide
+
+## 3. Documentation des modifications
+
+1. Nouvelles fonctionnalités ajoutées :
+   - Indicateur de chargement
+   - Compteur de résultats
+   - Tri des colonnes
+   - Formatage amélioré des dates
+   - Gestion d'erreur détaillée
+
+2. Améliorations UI/UX :
+   - Layout responsive
+   - Messages d'erreur plus visibles
+   - Meilleure organisation visuelle
+   - Styles cohérents avec SLDS
+
+## 4. Prochaines étapes
+
+1. Déploiement :
+   - Tester dans un environnement sandbox
+   - Valider avec les utilisateurs
+   - Déployer en production
+
+2. Maintenance :
+   - Surveiller les performances
+   - Recueillir les retours utilisateurs
+   - Planifier les futures améliorations

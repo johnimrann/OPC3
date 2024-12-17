@@ -1,3 +1,27 @@
 /**
  * Created by William on 13/03/2024.
  */
+
+.search-container {
+    padding: 1rem;
+    background-color: #f3f3f3;
+    border-radius: 0.25rem;
+}
+
+.search-button {
+    margin-left: 1rem;
+}
+
+.error-message {
+    padding: 0.5rem;
+    background-color: #ffdede;
+    border: 1px solid #c23934;
+    border-radius: 0.25rem;
+    display: flex;
+    align-items: center;
+}
+
+.result-count {
+    color: #706e6b;
+    font-style: italic;
+}

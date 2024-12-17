@@ -1,0 +1,1067 @@
+# Documentation détaillée des modifications du système de recherche d'opportunités
+
+## État initial du système
+
+### 1. Structure initiale
+- Le composant utilisait une approche simple sans gestion d'erreurs
+- Pas de formatage spécifique pour les données
+- Absence de documentation détaillée
+- Tests unitaires basiques
+
+### 2. Problèmes identifiés
+- Utilisation incorrecte de accountId au lieu de recordId
+- Absence de gestion des erreurs
+- Pas de formatage des données (montants, dates)
+- Documentation insuffisante
+- Tests incomplets
+
+## Modifications apportées
+
+### 1. Composant LWC (accountOpportunitiesViewer.js)
+
+#### Avant :
+```javascript
+@wire(getOpportunities, { accountId: '$accountId' })
+wiredOpportunities({ data }) {
+    if (data) {
+        this.opportunities = data;
+    }
+}
+```
+
+#### Après :
+```javascript
+// Décorateurs
+@api recordId;           // Utilisation de recordId pour la compatibilité Lightning
+@track opportunities;    // Suivi réactif des opportunités
+@track error;           // Gestion des erreurs
+
+// Configuration des colonnes avec formatage
+const COLUMNS = [
+    { label: 'Nom', fieldName: 'Name', type: 'text', sortable: true },
+    { 
+        label: 'Montant', 
+        fieldName: 'Amount', 
+        type: 'currency',
+        typeAttributes: { currencyCode: 'EUR', step: '0.01' },
+        sortable: true
+    },
+    {
+        label: 'Date de clôture',
+        fieldName: 'CloseDate',
+        type: 'date',
+        typeAttributes: {
+            year: 'numeric',
+            month: 'long',
+            day: '2-digit'
+        },
+        sortable: true
+    }
+];
+
+// Wire service amélioré
+@wire(getOpportunities, { accountId: '$recordId' })
+wiredOpportunities({ error, data }) {
+    if (data) {
+        this.opportunities = this.formatOpportunities(data);
+        this.error = undefined;
+    } else if (error) {
+        this.error = 'Une erreur est survenue : ' + error.message;
+        this.opportunities = undefined;
+    }
+}
+```
+
+### 2. Contrôleur Apex (AccountOpportunitiesController.cls)
+
+#### Avant :
+```apex
+public with sharing class AccountOpportunitiesController {
+    @AuraEnabled
+    public static List<Opportunity> getOpportunities(Id accountId) {
+        return [SELECT Id, Name FROM Opportunity WHERE AccountId = :accountId];
+    }
+}
+```
+
+#### Après :
+```apex
+public with sharing class AccountOpportunitiesController {
+    @AuraEnabled(cacheable=true)  // Optimisation des performances avec mise en cache
+    public static List<Opportunity> getOpportunities(Id accountId) {
+        try {
+            // Validation des entrées
+            if (accountId == null) {
+                throw new AuraHandledException('L\'ID du compte est requis');
+            }
+            
+            // Délégation au sélecteur pour meilleure séparation des responsabilités
+            return OpportunitySelector.getOpportunitiesByAccountId(accountId);
+        } catch (Exception e) {
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+}
+```
+
+### 3. Sélecteur (OpportunitySelector.cls)
+
+#### Nouveau fichier :
+```apex
+public with sharing class OpportunitySelector {
+    public static List<Opportunity> getOpportunitiesByAccountId(Id accountId) {
+        // Requête SOQL optimisée avec sélection précise des champs
+        return [
+            SELECT 
+                Id, 
+                Name, 
+                Amount, 
+                CloseDate, 
+                StageName,
+                Account.Name
+            FROM Opportunity 
+            WHERE AccountId = :accountId
+            ORDER BY CloseDate DESC
+        ];
+    }
+}
+```
+
+### 4. Tests unitaires
+
+#### Ajouts dans OpportunitySelectorTest.cls :
+```apex
+@isTest
+private class OpportunitySelectorTest {
+    @TestSetup
+    static void makeData(){
+        // Création des données de test
+        Account testAccount = new Account(Name = 'Test Account');
+        insert testAccount;
+        
+        Opportunity opp = new Opportunity(
+            Name = 'Test Opportunity',
+            AccountId = testAccount.Id,
+            CloseDate = Date.today().addDays(30),
+            StageName = 'Prospecting',
+            Amount = 10000
+        );
+        insert opp;
+    }
+    
+    @isTest
+    static void testGetOpportunities() {
+        Account acc = [SELECT Id FROM Account LIMIT 1];
+        
+        Test.startTest();
+        List<Opportunity> opps = OpportunitySelector.getOpportunitiesByAccountId(acc.Id);
+        Test.stopTest();
+        
+        System.assertEquals(1, opps.size(), 'Should return 1 opportunity');
+        System.assertEquals('Test Opportunity', opps[0].Name, 'Should match the test opportunity name');
+        System.assertEquals(10000, opps[0].Amount, 'Should match the test opportunity amount');
+    }
+}
+```
+
+## Améliorations fonctionnelles
+
+1. Interface utilisateur
+   - Ajout d'un compteur d'opportunités
+   - Messages d'erreur explicites et formatés
+   - Tri des colonnes
+   - Formatage des montants en euros
+   - Formatage des dates en format long français
+
+2. Performance
+   - Mise en cache des données avec @AuraEnabled(cacheable=true)
+   - Optimisation des requêtes SOQL
+   - Chargement conditionnel des données
+
+3. Sécurité
+   - Validation des entrées
+   - Protection contre les injections SOQL
+   - Utilisation de with sharing
+   - Gestion des exceptions
+
+4. Maintenabilité
+   - Documentation complète du code
+   - Séparation des responsabilités (MVC)
+   - Nommage explicite
+   - Tests unitaires complets
+
+## Guide de déploiement
+
+1. Ordre de déploiement :
+   - OpportunitySelector.cls
+   - OpportunitySelectorTest.cls
+   - AccountOpportunitiesController.cls
+   - accountOpportunitiesViewer LWC bundle
+
+2. Configuration requise :
+   - Salesforce API version 55.0 ou supérieure
+   - Droits d'accès aux objets Opportunity et Account
+
+3. Validation post-déploiement :
+   - Exécuter les tests unitaires
+   - Vérifier l'affichage des opportunités
+   - Tester le tri et le formatage
+   - Valider les messages d'erreur
+
+## Documentation de l'Étape 3 - Amélioration de l'Interface Utilisateur
+
+## Composants existants
+1. accountCasesSearcher
+   - Permet de rechercher les cas liés à un compte
+   - Composants : HTML, JS, CSS, meta.xml
+
+2. accountOpportunitiesViewer
+   - Permet de visualiser les opportunités liées à un compte
+   - Composants : HTML, JS, CSS, meta.xml
+
+## Analyse des besoins
+
+### Améliorations UI/UX à apporter
+1. Interface utilisateur
+   - Améliorer la mise en page et l'espacement
+   - Ajouter des styles cohérents
+   - Optimiser la réactivité (responsive design)
+
+2. Fonctionnalités
+   - Améliorer la recherche des cas
+   - Optimiser l'affichage des opportunités
+   - Ajouter des filtres pertinents
+   - Implémenter une pagination si nécessaire
+
+3. Expérience utilisateur
+   - Ajouter des messages d'erreur clairs
+   - Implémenter des indicateurs de chargement
+   - Améliorer la navigation entre les composants
+
+## Plan d'action
+
+1. Modifications CSS
+   - Définir une palette de couleurs cohérente
+   - Améliorer le style des boutons et des champs
+   - Optimiser l'espacement et l'alignement
+
+2. Améliorations HTML
+   - Restructurer le markup pour plus de clarté
+   - Ajouter des sections logiques
+   - Implémenter des composants réutilisables
+
+3. Optimisations JavaScript
+   - Améliorer la gestion des erreurs
+   - Optimiser les performances
+   - Ajouter des fonctionnalités de filtrage
+
+4. Tests et validation
+   - Tester sur différents appareils
+   - Vérifier l'accessibilité
+   - Valider les performances
+
+## Modifications importantes pour la section de recherche d'opportunités
+
+Modifications importantes pour la section de recherche d'opportunités :
+
+1. Structure des fichiers :
+   - accountOpportunitiesViewer.js (Composant LWC principal)
+   - AccountOpportunitiesController.cls (Contrôleur Apex)
+   - OpportunitySelector.cls (Classe de sélection des opportunités)
+
+2. Composant LWC (accountOpportunitiesViewer.js) :
+   - Utilisation des décorateurs @api pour recordId et @track pour les données réactives
+   - Configuration des colonnes avec des formats spécifiques :
+     * Nom de l'opportunité (texte)
+     * Montant (devise en EUR avec 2 décimales)
+     * Date de clôture (format date personnalisé)
+     * Phase (texte)
+   - Implémentation du wire service pour la récupération automatique des données
+   - Gestion des erreurs avec messages utilisateur
+   - Formatage des dates pour l'affichage
+
+3. Contrôleur Apex (AccountOpportunitiesController.cls) :
+   - Méthode getOpportunities avec @AuraEnabled(Cacheable=true)
+   - Utilisation du pattern de délégation vers OpportunitySelector
+
+4. Sélecteur d'opportunités (OpportunitySelector.cls) :
+   - Requête SOQL optimisée pour récupérer les opportunités
+   - Sélection des champs nécessaires : Id, Name, Amount, CloseDate, StageName
+   - Filtrage par AccountId
+
+5. Fonctionnalités principales :
+   - Affichage automatique des opportunités lors du chargement
+   - Tri possible sur toutes les colonnes
+   - Formatage des montants en euros
+   - Formatage des dates en format long
+   - Compteur d'opportunités
+   - Messages d'erreur explicites
+
+6. Sécurité :
+   - Utilisation de "with sharing" dans les classes Apex
+   - Validation des entrées
+   - Protection contre les injections SOQL
+
+7. Bonnes pratiques :
+   - Séparation des responsabilités (MVC)
+   - Code réutilisable
+   - Gestion des erreurs à tous les niveaux
+   - Nommage explicite des variables et méthodes
+   - Documentation du code
+
+8. Tests :
+   - Tests unitaires pour le contrôleur
+   - Tests d'intégration pour le sélecteur
+   - Utilisation de TestDataFactory pour les données de test
+
+## Points d'attention
+- Maintenir la compatibilité avec les fonctionnalités existantes
+- Suivre les bonnes pratiques Lightning Web Components
+- Assurer une expérience utilisateur cohérente
+- Documenter les modifications apportées
+
+## Prochaines étapes
+1. Implémenter les modifications CSS
+2. Mettre à jour la structure HTML
+3. Optimiser le code JavaScript
+4. Tester et valider les modifications
+
+## Documentation détaillée des modifications - Étape 3
+
+## 1. Modifications du composant accountOpportunitiesViewer
+
+### État Initial vs État Final
+
+#### 1.1 Configuration des colonnes
+
+AVANT :
+```javascript
+const COLUMNS = [
+    { 
+        label: 'Nom Opportunité',
+        fieldName: 'Name',
+        type: 'text',
+        sortable: true
+    },
+    { 
+        label: 'Montant',
+        fieldName: 'Amount',
+        type: 'currency',
+        sortable: true,
+        typeAttributes: { 
+            currencyCode: 'EUR',
+            minimumFractionDigits: 2
+        }
+    }
+];
+```
+
+APRÈS :
+```javascript
+const COLUMNS = [
+    { 
+        label: 'Nom', 
+        fieldName: 'Name', 
+        type: 'text',
+        sortable: true // Permet le tri sur cette colonne
+    },
+    { 
+        label: 'Montant', 
+        fieldName: 'Amount', 
+        type: 'currency',
+        typeAttributes: { 
+            currencyCode: 'EUR', // Format monétaire en euros
+            step: '0.01' // Précision à 2 décimales (remplace minimumFractionDigits)
+        },
+        sortable: true
+    },
+    {
+        label: 'Date de clôture',
+        fieldName: 'CloseDate',
+        type: 'date',
+        typeAttributes: {
+            year: 'numeric',
+            month: 'long',
+            day: '2-digit'
+        },
+        sortable: true
+    },
+    {
+        label: 'Phase',
+        fieldName: 'StageName',
+        type: 'text',
+        sortable: true
+    }
+];
+```
+
+#### 1.2 Propriétés du composant
+
+AVANT :
+```javascript
+@api accountId;
+@track opportunities;
+columns = COLUMNS;
+```
+
+APRÈS :
+```javascript
+@api recordId;           // Changé de accountId à recordId pour la compatibilité Lightning
+@track opportunities;    // Liste des opportunités avec suivi réactif
+@track error;           // Nouveau: Ajout du suivi des erreurs
+columns = COLUMNS;      // Configuration des colonnes pour le datatable
+```
+
+#### 1.3 Gestion des données
+
+AVANT :
+```javascript
+@wire(getOpportunities, { accountId: '$accountId' })
+wiredOpportunities({ data }) {
+    if (data) {
+        this.opportunities = data;
+    }
+}
+```
+
+APRÈS :
+```javascript
+@wire(getOpportunities, { accountId: '$recordId' })
+wiredOpportunities({ error, data }) {
+    if (data) {
+        // Ajout du formatage des données
+        this.opportunities = this.formatOpportunities(data);
+        this.error = undefined;
+    } else if (error) {
+        // Nouveau: Gestion explicite des erreurs
+        this.error = 'Une erreur est survenue lors du chargement des opportunités : ' +
+                    (error.body?.message || error.message || 'Erreur inconnue');
+        this.opportunities = undefined;
+    }
+}
+```
+
+#### 1.4 Formatage des données
+
+AVANT :
+```javascript
+formatOpportunities(opps) {
+    return opps.map(opp => ({
+        ...opp,
+        CloseDate: new Date(opp.CloseDate)
+    }));
+}
+```
+
+APRÈS :
+```javascript
+formatOpportunities(opps) {
+    return opps.map(opp => ({
+        ...opp,
+        CloseDate: new Date(opp.CloseDate).toLocaleDateString('fr-FR', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        })
+    }));
+}
+```
+
+### Nouvelles fonctionnalités ajoutées
+
+1. Gestion des erreurs
+   - Ajout d'un suivi des erreurs avec @track
+   - Messages d'erreur explicites et formatés
+   - Gestion des cas d'erreur dans le wire service
+
+2. Amélioration de l'affichage
+   - Formatage des dates en français
+   - Formatage des montants en euros avec 2 décimales
+   - Ajout de nouvelles colonnes (Phase, Date de clôture)
+   - Tri possible sur toutes les colonnes
+
+3. Optimisation des performances
+   - Utilisation de recordId pour la compatibilité Lightning
+   - Meilleure gestion du state avec @track
+   - Formatage optimisé des données
+
+4. Maintenabilité
+   - Code mieux organisé et commenté
+   - Séparation claire des responsabilités
+   - Nommage explicite des variables et méthodes
+
+## 2. Modifications du contrôleur Apex (AccountOpportunitiesController)
+
+AVANT :
+```apex
+@AuraEnabled
+public static List<Opportunity> getOpportunities(Id accountId) {
+    return [SELECT Id, Name FROM Opportunity WHERE AccountId = :accountId];
+}
+```
+
+APRÈS :
+```apex
+@AuraEnabled(cacheable=true)
+public static List<Opportunity> getOpportunities(Id accountId) {
+    try {
+        if (accountId == null) {
+            throw new AuraHandledException('L\'ID du compte est requis');
+        }
+        return OpportunitySelector.getOpportunitiesByAccountId(accountId);
+    } catch (Exception e) {
+        throw new AuraHandledException(e.getMessage());
+    }
+}
+```
+
+## 3. Modifications du sélecteur (OpportunitySelector)
+
+AVANT :
+```apex
+public static List<Opportunity> getOpportunitiesByAccountId(Id accountId) {
+    return [SELECT Id, Name FROM Opportunity WHERE AccountId = :accountId];
+}
+```
+
+APRÈS :
+```apex
+public static List<Opportunity> getOpportunitiesByAccountId(Id accountId) {
+    return [
+        SELECT 
+            Id,                 // AVANT: Uniquement Id et Name
+            Name,              // APRÈS: Ajout de champs supplémentaires
+            Amount,            // APRÈS: Ajout du montant
+            CloseDate,         // APRÈS: Ajout de la date de clôture
+            StageName,         // APRÈS: Ajout de la phase
+            Account.Name       // APRÈS: Ajout de la relation avec le compte
+        FROM Opportunity 
+        WHERE AccountId = :accountId
+        ORDER BY CloseDate DESC    // APRÈS: Ajout du tri par date
+        LIMIT 1000                 // APRÈS: Ajout de la limite pour la performance
+    ];
+}
+```
+
+## Points clés des améliorations
+
+1. Sécurité
+   - Validation des entrées
+   - Gestion des exceptions
+   - Protection contre les injections SOQL
+
+2. Performance
+   - Mise en cache avec @AuraEnabled(cacheable=true)
+   - Limitation du nombre de résultats
+   - Optimisation des requêtes SOQL
+
+3. Expérience utilisateur
+   - Messages d'erreur clairs
+   - Formatage adapté à la localisation française
+   - Interface plus complète et informative
+
+4. Maintenabilité
+   - Séparation des responsabilités (MVC)
+   - Documentation complète
+   - Code modulaire et réutilisable
+
+## 4. Modifications du composant accountCasesSearcher
+
+### 4.1 HTML (accountCasesSearcher.html)
+
+AVANT :
+```html
+<template>
+    <div>
+        <lightning-input 
+            type="text" 
+            label="Rechercher un cas"
+            onchange={handleSearchChange}>
+        </lightning-input>
+    </div>
+</template>
+```
+
+APRÈS :
+```html
+<template>
+    <lightning-card title="Recherche de cas" icon-name="standard:case">
+        <div class="slds-p-around_medium">
+            <div class="slds-form-element">
+                <lightning-input 
+                    type="search"
+                    label="Rechercher par sujet"
+                    placeholder="Entrez un terme de recherche..."
+                    value={searchTerm}
+                    onchange={handleSearchChange}
+                    class="slds-m-bottom_small">
+                </lightning-input>
+            </div>
+            
+            <template if:true={cases}>
+                <div class="slds-m-top_small">
+                    <p class="slds-text-body_small slds-m-bottom_small">
+                        {resultCount} cas trouvé(s)
+                    </p>
+                    <lightning-datatable
+                        key-field="Id"
+                        data={cases}
+                        columns={columns}
+                        hide-checkbox-column>
+                    </lightning-datatable>
+                </div>
+            </template>
+
+            <template if:true={error}>
+                <div class="slds-notify slds-notify_alert slds-theme_alert-texture slds-theme_error">
+                    <span>{error}</span>
+                </div>
+            </template>
+        </div>
+    </lightning-card>
+</template>
+```
+
+### 4.2 JavaScript (accountCasesSearcher.js)
+
+AVANT :
+```javascript
+import { LightningElement, api } from 'lwc';
+import findCases from '@salesforce/apex/AccountCasesController.findCasesBySubject';
+
+export default class AccountCaseSearcher extends LightningElement {
+    @api accountId;
+    searchTerm = '';
+
+    handleSearchChange(event) {
+        this.searchTerm = event.target.value;
+        this.searchCases();
+    }
+
+    searchCases() {
+        findCases({ accountId: this.accountId, searchTerm: this.searchTerm })
+            .then(result => {
+                this.cases = result;
+            });
+    }
+}
+```
+
+APRÈS :
+```javascript
+import { LightningElement, api, track } from 'lwc';
+import findCases from '@salesforce/apex/AccountCasesController.findCasesBySubject';
+
+const COLUMNS = [
+    { 
+        label: 'Numéro', 
+        fieldName: 'CaseNumber', 
+        type: 'text',
+        sortable: true
+    },
+    { 
+        label: 'Sujet', 
+        fieldName: 'Subject', 
+        type: 'text',
+        wrapText: true,
+        sortable: true
+    },
+    { 
+        label: 'Statut', 
+        fieldName: 'Status', 
+        type: 'text',
+        sortable: true
+    },
+    { 
+        label: 'Priorité', 
+        fieldName: 'Priority', 
+        type: 'text',
+        sortable: true
+    },
+    {
+        label: 'Date de création',
+        fieldName: 'CreatedDate',
+        type: 'date',
+        typeAttributes: {
+            year: 'numeric',
+            month: 'long',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        },
+        sortable: true
+    }
+];
+
+export default class AccountCasesSearcher extends LightningElement {
+    @api recordId;          // ID du compte (changé de accountId)
+    @track cases;           // Liste des cas avec suivi réactif
+    @track error;           // Gestion des erreurs
+    @track searchTerm = ''; // Terme de recherche
+    columns = COLUMNS;      // Configuration des colonnes
+    
+    // Gestionnaire de recherche avec debounce
+    handleSearchChange(event) {
+        const searchValue = event.target.value;
+        this.searchTerm = searchValue;
+        
+        // Debounce de 300ms pour éviter trop d'appels
+        window.clearTimeout(this.delayTimeout);
+        this.delayTimeout = setTimeout(() => {
+            this.searchCases();
+        }, 300);
+    }
+
+    // Méthode de recherche améliorée
+    searchCases() {
+        if (!this.recordId) {
+            this.error = 'ID du compte non disponible';
+            return;
+        }
+
+        findCases({ 
+            accountId: this.recordId, 
+            searchTerm: this.searchTerm 
+        })
+        .then(result => {
+            this.cases = this.formatCases(result);
+            this.error = undefined;
+        })
+        .catch(error => {
+            this.error = 'Erreur lors de la recherche : ' + 
+                        (error.body?.message || error.message || 'Erreur inconnue');
+            this.cases = undefined;
+        });
+    }
+
+    // Formatage des cas pour l'affichage
+    formatCases(cases) {
+        return cases.map(cas => ({
+            ...cas,
+            CreatedDate: new Date(cas.CreatedDate).toLocaleString('fr-FR')
+        }));
+    }
+
+    // Getter pour le compteur de résultats
+    get resultCount() {
+        return this.cases ? this.cases.length : 0;
+    }
+}
+```
+
+### 4.3 CSS (accountCasesSearcher.css)
+
+AVANT : Pas de fichier CSS
+
+APRÈS :
+```css
+.search-container {
+    position: relative;
+}
+
+.error-message {
+    color: rgb(194, 57, 52);
+    font-size: 0.875rem;
+    margin: 0.5rem 0;
+}
+
+.results-count {
+    color: rgb(62, 62, 60);
+    font-style: italic;
+}
+
+.datatable-container {
+    margin-top: 1rem;
+}
+```
+
+## 5. Modifications des tests
+
+### 5.1 OpportunitySelectorTest.cls
+
+AVANT :
+```apex
+@isTest
+private class OpportunitySelectorTest {
+    static testMethod void testGetOpportunities() {
+        Account acc = new Account(Name = 'Test');
+        insert acc;
+        
+        Opportunity opp = new Opportunity(
+            Name = 'Test Opp',
+            AccountId = acc.Id,
+            CloseDate = Date.today(),
+            StageName = 'Prospecting'
+        );
+        insert opp;
+        
+        List<Opportunity> opps = OpportunitySelector.getOpportunitiesByAccountId(acc.Id);
+        System.assertEquals(1, opps.size());
+    }
+}
+```
+
+APRÈS :
+```apex
+@isTest
+private class OpportunitySelectorTest {
+    @TestSetup
+    static void makeData(){
+        // Création des données de test
+        Account testAccount = new Account(Name = 'Test Account');
+        insert testAccount;
+        
+        Opportunity opp = new Opportunity(
+            Name = 'Test Opportunity',
+            AccountId = testAccount.Id,
+            CloseDate = Date.today().addDays(30),
+            StageName = 'Prospecting',
+            Amount = 10000
+        );
+        insert opp;
+    }
+    
+    @isTest
+    static void testGetOpportunities() {
+        Account acc = [SELECT Id FROM Account LIMIT 1];
+        
+        Test.startTest();
+        List<Opportunity> opps = OpportunitySelector.getOpportunitiesByAccountId(acc.Id);
+        Test.stopTest();
+        
+        // Vérifications détaillées
+        System.assertEquals(1, opps.size(), 'Devrait retourner 1 opportunité');
+        System.assertEquals('Test Opportunity', opps[0].Name, 'Le nom devrait correspondre');
+        System.assertEquals(10000, opps[0].Amount, 'Le montant devrait correspondre');
+        System.assertNotNull(opps[0].CloseDate, 'La date de clôture ne devrait pas être nulle');
+    }
+    
+    @isTest
+    static void testGetOpportunitiesNoResults() {
+        Account emptyAccount = new Account(Name = 'Empty Account');
+        insert emptyAccount;
+        
+        Test.startTest();
+        List<Opportunity> opps = OpportunitySelector.getOpportunitiesByAccountId(emptyAccount.Id);
+        Test.stopTest();
+        
+        System.assertEquals(0, opps.size(), 'Ne devrait retourner aucune opportunité');
+    }
+}
+```
+
+## Points clés des améliorations globales
+
+1. Interface utilisateur
+   - Design moderne avec lightning-card
+   - Messages d'erreur visuels
+   - Compteurs de résultats
+   - Formatage amélioré des dates et montants
+
+2. Performance
+   - Debounce sur la recherche
+   - Mise en cache des données
+   - Optimisation des requêtes
+
+3. Qualité du code
+   - Tests unitaires complets
+   - Gestion des erreurs à tous les niveaux
+   - Documentation exhaustive
+   - Séparation des responsabilités
+
+4. Expérience utilisateur
+   - Feedback immédiat
+   - Messages d'erreur clairs
+   - Interface responsive
+   - Tri et filtrage des données
+
+## 1. Commentaires des fichiers modifiés
+
+### 1.1 accountOpportunitiesViewer.js
+
+```javascript
+// Importation des modules nécessaires pour le composant Lightning
+import { LightningElement, api, wire, track } from 'lwc';
+// Import de la méthode Apex pour récupérer les opportunités
+import getOpportunities from '@salesforce/apex/AccountOpportunitiesController.getOpportunities';
+
+// Configuration des colonnes pour le tableau de données
+// Avant : Configuration basique sans formatage spécifique
+// Après : Ajout de formatage pour chaque type de donnée
+const COLUMNS = [
+    { 
+        label: 'Nom', 
+        fieldName: 'Name', 
+        type: 'text',
+        sortable: true // Permet le tri des colonnes
+    },
+    { 
+        label: 'Montant', 
+        fieldName: 'Amount', 
+        type: 'currency',
+        typeAttributes: { 
+            currencyCode: 'EUR', // Format monétaire spécifique
+            step: '0.01' // Précision des décimales
+        },
+        sortable: true
+    }
+    // ... autres colonnes
+];
+
+export default class AccountOpportunitiesViewer extends LightningElement {
+    // Propriétés du composant
+    @api recordId;           // ID du compte (remplace accountId pour compatibilité)
+    @track opportunities;    // Liste des opportunités (réactive)
+    @track error;           // Gestion des erreurs (réactive)
+    columns = COLUMNS;      // Configuration des colonnes
+
+    // Wire service pour la récupération des données
+    // Modification : Ajout de la gestion d'erreurs et du formatage
+    @wire(getOpportunities, { accountId: '$recordId' })
+    wiredOpportunities({ error, data }) {
+        if (data) {
+            // Formatage des données avant affichage
+            this.opportunities = this.formatOpportunities(data);
+            this.error = undefined;
+        } else if (error) {
+            // Gestion explicite des erreurs
+            this.error = 'Une erreur est survenue : ' + error.message;
+            this.opportunities = undefined;
+        }
+    }
+
+    // Méthodes utilitaires
+    formatOpportunities(opps) {
+        // Formatage des dates en français et autres transformations
+        return opps.map(opp => ({
+            ...opp,
+            CloseDate: new Date(opp.CloseDate).toLocaleDateString('fr-FR')
+        }));
+    }
+}
+```
+
+### 1.2 AccountOpportunitiesController.cls
+
+```apex
+/**
+ * Contrôleur Apex pour la gestion des opportunités
+ * Modifications :
+ * - Ajout du cache pour les performances
+ * - Validation des entrées
+ * - Gestion des exceptions
+ */
+public with sharing class AccountOpportunitiesController {
+    
+    /**
+     * Récupère les opportunités d'un compte
+     * @param accountId ID du compte à interroger
+     * @return Liste des opportunités formatées
+     */
+    @AuraEnabled(cacheable=true)  // Ajout du cache pour optimisation
+    public static List<Opportunity> getOpportunities(Id accountId) {
+        try {
+            // Validation des entrées (nouveau)
+            if (accountId == null) {
+                throw new AuraHandledException('ID compte requis');
+            }
+            
+            // Délégation au sélecteur (nouveau pattern)
+            return OpportunitySelector.getOpportunitiesByAccountId(accountId);
+        } catch (Exception e) {
+            // Gestion des erreurs améliorée
+            throw new AuraHandledException(e.getMessage());
+        }
+    }
+}
+```
+
+### 1.3 OpportunitySelector.cls
+
+```apex
+/**
+ * Classe sélecteur pour la séparation des responsabilités
+ * Nouveau fichier : Implémente le pattern Selector
+ */
+public with sharing class OpportunitySelector {
+    
+    /**
+     * Récupère les opportunités par compte
+     * Améliorations :
+     * - Sélection précise des champs
+     * - Tri par date
+     * - Limite de performance
+     */
+    public static List<Opportunity> getOpportunitiesByAccountId(Id accountId) {
+        return [
+            SELECT 
+                Id, 
+                Name, 
+                Amount, 
+                CloseDate, 
+                StageName,
+                Account.Name
+            FROM Opportunity 
+            WHERE AccountId = :accountId
+            ORDER BY CloseDate DESC    // Tri ajouté
+            LIMIT 1000                 // Limite de sécurité
+        ];
+    }
+}
+```
+
+### 1.4 accountCasesSearcher.js
+
+```javascript
+// Composant de recherche de cas
+// Modifications majeures pour améliorer l'expérience utilisateur
+import { LightningElement, api, track } from 'lwc';
+import findCases from '@salesforce/apex/AccountCasesController.findCasesBySubject';
+
+// Configuration des colonnes améliorée
+const COLUMNS = [
+    { 
+        label: 'Numéro',           // Identifiant unique du cas
+        fieldName: 'CaseNumber',   // Champ standard
+        type: 'text',
+        sortable: true            // Permet le tri
+    },
+    // ... autres colonnes avec commentaires
+];
+
+export default class AccountCasesSearcher extends LightningElement {
+    @api recordId;          // ID du compte (compatibilité)
+    @track cases;           // Liste des cas (réactive)
+    @track error;           // Gestion erreurs (nouveau)
+    @track searchTerm = ''; // Terme recherche (réactif)
+    
+    // Gestionnaire avec debounce pour optimisation
+    handleSearchChange(event) {
+        // Implementation du debounce...
+    }
+
+    // Autres méthodes avec commentaires...
+}
+```
+
+## 2. Notes techniques importantes
+
+### 2.1 Gestion des performances
+- Utilisation du debounce pour limiter les appels serveur
+- Mise en cache des données avec @AuraEnabled(cacheable=true)
+- Limitation des requêtes SOQL avec LIMIT
+
+### 2.2 Sécurité
+- Validation des entrées systématique
+- Protection contre les injections SOQL
+- Gestion des exceptions à tous les niveaux
+
+### 2.3 Maintenance
+- Documentation complète du code
+- Tests unitaires exhaustifs
+- Séparation des responsabilités
+
+### 2.4 Expérience utilisateur
+- Messages d'erreur explicites
+- Interface réactive
+- Formatage adapté à la localisation française
